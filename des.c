@@ -1,3 +1,5 @@
+// Made by: Gabriele Quagliarella, Marco De Nicolo, Simone Quadrelli.
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
