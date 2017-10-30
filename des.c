@@ -3,10 +3,11 @@
 #include <stdint.h>
 #include <math.h>
 #include <assert.h>
-#include "string.h"
+#include <string.h>
 
 // Possibili combinazioni tra Coppie di Plaintext
-#define MAX_DIM 2
+#define N_PLAIN 8
+#define MAX_DIM N_PLAIN * (N_PLAIN-1)
 
 typedef struct _L0R0
 {
@@ -34,10 +35,13 @@ typedef struct _CoupleKey{
   unsigned int right:4;
 } CoupleKey;
 
+typedef struct _HalfKey{
+  unsigned int key: 4;
+} HalfKey;
+
 L0R0 list_plaintext[8] = {{0b000111, 0b011011}, {0b101110, 0b011011}, {0b000000, 0b011011}, {0b111111, 0b011011},
                           {0b101010, 0b011011}, {0b010101, 0b011011}, {0b101101, 0b011011}, {0b110111, 0b011011}};
 
-L0R0 list_plaintext2[2] = {{0b000111, 0b011011}, {0b101110, 0b011011}};
 uint8_t s1 [2][8] = {{5,2,1,6,3,4,7,0},{1,4,6,2,0,7,5,3}};
 uint8_t s2 [2][8] = {{4,0,6,5,7,1,3,2},{5,3,0,7,6,2,1,4}};
 int length_gen_key[MAX_DIM];   // array lunghezze elementi di uint8_t** gen_key
@@ -54,6 +58,7 @@ L0R0 des (L0R0 plaintext, Key key, uint64_t n_round);
 uint8_t* diff_crypto (L0R0 p1, L0R0 p2, L0R0 c1, L0R0 c2);
 uint8_t** gen_key (L0R0* lista_plain);
 void get_key(uint8_t** list_key);
+void print_plains(L0R0* lista_plain);
 
 uint8_t expansion (uint8_t r0)
 {
@@ -129,49 +134,44 @@ uint8_t* diff_crypto (L0R0 p1, L0R0 p2, L0R0 c1, L0R0 c2){
   OutSBox out = {.left = ((c1.r0 ^ c2.r0) ^ (p1.l0 ^ p2.l0)) >> 3,
                  .right =   ((c1.r0 ^ c2.r0) ^ (p1.l0 ^ p2.l0)) & 0b000111};
 
-  //printf("InSbox: left=0x%x | right=0x%x\n", in.left, in.right);
-  //printf("OutSbox: left=0x%x | right=0x%x\n", out.left, out.right);
-  // Bruteforce S1: 0000 => 1111
-  CoupleKey* key_list1 = malloc(sizeof(CoupleKey)*16);
-  CoupleKey* key_list2 = malloc(sizeof(CoupleKey)*16);
+  HalfKey* key_s1 = malloc(sizeof(HalfKey)*16); // key_s1[i] = K4i = E(L4) ^ i
+  HalfKey* key_s2 = malloc(sizeof(HalfKey)*16); // key_s2[i] = K4i = E(L4) ^ i
 
   int index1 = 0;
   int index2 = 0;
 
   for (uint8_t i = 0b0000; i <= 0b1111 ; i++) {
+    // i = E(L4) ^ K4 = left
+    // i ^ in.left = E(L4*) ^ K4 = right
     if((getBox(s1,i) ^ getBox(s1, (i ^ in.left))) == out.left){
-      key_list1[index1].left = i;
-      key_list1[index1].right = i ^ in.left;
+      key_s1[index1].key = i ^ (expansion(c1.l0) >> 4);
+      //printf("key_s1[%d]: 0x%x\n", index1, key_s1[index1].key);
       index1++;
     }
   }
-  // PROBLEMA = E(L4) ^ K4 = i
+
   // Bruteforce S2: 0000 => 1111
   for (uint8_t i = 0b0000; i <= 0b1111 ; i++) {
     if((getBox(s2,i) ^ getBox(s2, (i ^ in.right))) == out.right){
-      //printf("i ^ in.right: 0x%x | i: 0x%x | in.right: 0x%x | getBox(s2,%d): 0x%x | getBox(s2, (%d ^ in.right): 0x%x\n", i ^ in.right, i, in.right, i, getBox(s2,i), i, getBox(s2, (i ^ in.right)) );;
-      printf("expansion: 0x%x\n", (0b00001111 & expansion(c1.r0)));
-      key_list2[index2].left =  i ^  (0b00001111 & expansion(c1.r0));
-      key_list2[index2].right = i ^ in.right;
+      key_s2[index2].key = i ^ (expansion(c1.l0) & 0b00001111);
+      //printf("key_s2[%d]: 0x%x\n", index2, key_s2[index2].key);
       index2++;
     }
   }
 
-  uint8_t* LastKey = malloc(sizeof(uint8_t)*((index1*index2) + 1));
+  uint8_t* ListGenKey = malloc(sizeof(uint8_t)*((index1*index2)));
   int index3 = 0;
 
   for (int i = 0; i < index1; i++) {
     for (int j = 0; j < index2; j++) {
-      LastKey[index3] = (((uint8_t)(key_list1[i].left)) << 4) | key_list2[j].right;
-      //LastKey[index3] = (((uint8_t)(key_list1[i].left)) << 4) | (0b00001111 & key_list2[j].right);
-      printf("LastKey[%d]: 0x%x |left =x%x key_list2[%d]: 0x%x\n", index3, LastKey[index3],(((uint8_t)(key_list1[i].left)) << 4) , j, key_list2[j].right);
+      ListGenKey[index3] =  (((uint8_t)key_s1[i].key) << 4) | key_s2[j].key;
+      //printf("ListGenKey[%d]: 0x%x\n", index3, ListGenKey[index3]);
       index3++;
     }
   }
 
   length_gen_key[length_index] = index3;
-  //LastKey[index3] = '0x0'
-  return LastKey;
+  return ListGenKey;
 }
 
 uint8_t** gen_key (L0R0* lista){
@@ -179,8 +179,8 @@ uint8_t** gen_key (L0R0* lista){
   // 56 = 8 * 7 => MAX Coppie Plaintext
   uint8_t** list_key = malloc(sizeof(uint8_t*)*MAX_DIM);
 
-  for (int i = 0; i < 2; i++) {
-    for (int j = 0; j < 1; j++) {
+  for (int i = 0; i < N_PLAIN; i++) {
+    for (int j = 0; j < N_PLAIN-1; j++) {
       if(i != j){
           list_key[length_index] = diff_crypto(lista[i], lista[j], des(lista[i], key, 3), des(lista[j], key, 3));
           length_index++;
@@ -191,11 +191,35 @@ uint8_t** gen_key (L0R0* lista){
   return list_key;
 }
 
-void print_gen_key (uint8_t** gen_key){
-  //uint8_t** r = gen_key;
-  //uint8_t* c = gen_key[0];
+void get_key(uint8_t** list_key){
+  // 256 = 2^8 = Tutte le possibili chiavi
+  int* all_key = malloc(sizeof(uint8_t)* 256);
+  int n_keys = 0;
 
-  printf("\n -------- length_index %d \n", length_index);
+  printf("\n------ KEY COMPUTATION ------\n");
+
+  for (int i = 0; i < length_index; i++) {
+    //printf("length_gen_key[%d]: %d\n", i, length_gen_key[i]);
+    for (int j = 0; j < length_gen_key[i]; j++) {
+        all_key[list_key[i][j]]++;
+        n_keys++;
+    }
+  }
+
+  printf("\n%d different list of keys... \n", length_index);
+  printf("%d total 8-bit keys...\n", n_keys);
+
+  for (int i = 0; i < 256; i++) {
+    if(all_key[i] == length_index)
+      printf("K4 is: 0x%x\n", i);
+  }
+
+}
+
+void print_gen_key (uint8_t** gen_key){
+
+  printf("\n -------- LIST KEY -------- \n");
+
   for (int i = 0; i < length_index; i++) {
     printf("[%d]: ", i);
     for (int j = 0; j < length_gen_key[i]; j++) {
@@ -203,7 +227,16 @@ void print_gen_key (uint8_t** gen_key){
     }
     printf("\n");
   }
+}
 
+void print_plains(L0R0* lista_plain){
+
+  printf("\n+ --------- LIST PLAINTEXTs ---------- + --------- LIST CIPHERTEXTs ---------- +\n");
+
+  for (int i = 0; i < N_PLAIN; i++) {
+    printf("| Plaintext[%d]: left=0x%.2X | right=0x%.2X | Ciphertext[%d]: left=0x%.2X | right=0x%.2X |\n", i, lista_plain[i].l0, lista_plain[i].r0, i, des(lista_plain[i], key, 3).l0, des(lista_plain[i], key, 3).r0);
+  }
+  printf("+ ------------------------------------ + ------------------------------------- +\n");
 }
 
 int main(int argc, char* argv[])
@@ -217,25 +250,15 @@ int main(int argc, char* argv[])
   char l0[7] = {'0','0','0','0','0','0','\0'};
   char r0[7] = {'0','0','0','0','0','0','\0'};
   char key_string[10] = {'0','0','0','0','0','0','0','0','0','\0'};
-  //(void)strncpy(l0, argv[1], 6);
-  //(void)strncpy(r0, argv[1]+6, 6);
   (void)strncpy(key_string, argv[1], 9);
-
-  printf("Key: 0b%s\n", key_string);
-
-  //L0R0 plain1 = {.l0 = bin_string_to_int(l0), .r0 = bin_string_to_int(r0)};
-  //L0R0 plain2 = {.l0 = 0b000111, .r0 = 0b011011};
   key.key = bin_string_to_int(key_string);
-  //L0R0 cipher1 = des(plain1, key_plain, 3);
-  //L0R0 cipher2 = des(plain2, key_plain, 3);
-  //diff_crypto(plain1, plain2, cipher1, cipher2);
-  uint8_t* ris = diff_crypto(list_plaintext2[0], list_plaintext2[1], des(list_plaintext2[0], key, 3), des(list_plaintext2[1], key, 3));
-  //uint8_t** chiavi = gen_key(list_plaintext2);
-  //print_gen_key(chiavi);
 
-  for (int i = 0; i < 4; i++) {
-    printf("ris[%d]: 0x%x\n", i,ris[i]);
-  }
+  printf("\n\t\t======= DIFFERENTIAL CRYPTANALYSIS DES 3 round =======\n");
+  print_plains(list_plaintext);
+  uint8_t** chiavi = gen_key(list_plaintext);
+
+
+  get_key(chiavi);
 
   return 0;
 }
