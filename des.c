@@ -1,4 +1,4 @@
-// Made by: Gabriele Quagliarella, Marco De Nicolo, Simone Quadrelli.
+// Made by: Gabriele Quagliarella, Marco De Nicolo, Simone Quadrelli, Ettore Galante.
 
 #include <stdio.h>
 #include <stdlib.h>
