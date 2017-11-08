@@ -8,10 +8,6 @@
 // Return 1 if n is probably prime (without being certain) 
 // Return 0 if n is definitely non-prime.
 
-// void mpz_gcd (mpz_t rop, const mpz_t op1, const mpz_t op2)
-
-// int mpz_invert (mpz_t rop, const mpz_t op1, const mpz_t op2)
-
 int main(int argc, char** argv){
 
     mpz_t n,a,b,b_2,r,pow_a,zero,one,two,factor1,factor2,is_even; 
